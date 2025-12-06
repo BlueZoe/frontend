@@ -4,7 +4,7 @@ import { css, html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
 import { fireEvent } from "../../common/dom/fire_event"; // 假设路径一致，根据实际文件结构调整
-import type { MediaPlayerItem } from "../../data/media-player";
+import { MediaPlayerItem, browseMediaPlayer } from "../../data/media-player";
 import type { HomeAssistant } from "../../types";
 import "../ha-svg-icon";
 import "../ha-textfield";
@@ -15,13 +15,14 @@ export class HaMediaPlayerSearch extends LitElement {
 
   @property({ attribute: false }) public item!: MediaPlayerItem;
 
+  @property({ attribute: false }) public entityId!: string;
+
   @state() private _searchQuery = "";
 
   @state() private _searchFilter = "track";
 
   protected render(): TemplateResult {
     return html`
-
       <div class="content padding">
         <div class="search-bar">
           <ha-textfield
@@ -36,13 +37,13 @@ export class HaMediaPlayerSearch extends LitElement {
         </div>
 
         <div class="filter-tabs">
-          ${["track", "artist", "album"].map(
+          ${["track", "playlist", "album"].map(
             (filter) => html`
               <div
                 class="tab ${classMap({
                   active: this._searchFilter === filter,
                 })}"
-                @click=${() => (this._searchFilter = filter)}
+                @click=${() => this._handleFilterClick(filter)}
               >
                 ${filter.charAt(0).toUpperCase() + filter.slice(1)}s
               </div>
@@ -62,19 +63,47 @@ export class HaMediaPlayerSearch extends LitElement {
     `;
   }
 
+  private _handleFilterClick(filter: string) {
+    if (this._searchFilter === filter) return;
+    this._searchFilter = filter;
+    this._fetchResults(); // 切换 Tab 时触发搜索
+  }
+
   private _handleSearchInput(ev: any) {
     this._searchQuery = ev.target.value;
   }
 
   private _handleSearchKeyup(ev: KeyboardEvent) {
     if (ev.key === "Enter") {
-      // 触发搜索事件，父组件可以监听这个事件（如果需要），
-      // 或者这里直接调用 API（推荐在第二阶段在这里直接处理数据获取）
-      fireEvent(this, "search-triggered", {
-        query: this._searchQuery,
-        filter: this._searchFilter,
-      });
-      console.log("Trigger Search:", this._searchQuery, this._searchFilter);
+      this._fetchResults();
+    }
+  }
+
+  private async _fetchResults() {
+    const query = this._searchQuery.trim();
+    if (!query) return;
+
+    // 修改：使用字符串拼接代替 new URL()，避免部分浏览器对自定义 scheme 报错
+    const currentId = this.item.media_content_id;
+    const params = new URLSearchParams();
+    params.set("q", query);
+    params.set("type", this._searchFilter);
+
+    // 判断 currentId 是否已经包含参数（虽然 search 入口通常不含，但作为防守编程）
+    const separator = currentId.includes("?") ? "&" : "?";
+    const mediaContentId = `${currentId}${separator}${params.toString()}`;
+
+    try {
+      const result = await browseMediaPlayer(
+        this.hass,
+        this.entityId,
+        mediaContentId,
+        "search"
+      );
+      // 成功获取数据后在控制台输出
+      console.log("Search Results:", result);
+    } catch (err) {
+      console.error("Search failed:", err);
     }
   }
 
@@ -86,7 +115,7 @@ export class HaMediaPlayerSearch extends LitElement {
         height: 100%;
         overflow: hidden;
       }
-      
+
       /* 复用 Header 样式 */
       .header {
         display: flex;
