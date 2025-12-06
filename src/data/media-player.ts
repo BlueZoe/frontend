@@ -27,6 +27,7 @@ import {
   mdiTelevisionClassic,
   mdiVideo,
   mdiWeb,
+  mdiMagnify,
 } from "@mdi/js";
 import type {
   HassEntityAttributeBase,
@@ -176,6 +177,7 @@ export const MediaClassBrowserSettings: Record<
   },
   url: { icon: mdiWeb },
   video: { icon: mdiVideo, layout: "grid", show_list_images: true },
+  search_function: { icon: mdiMagnify, layout: "grid" },
 };
 
 export interface MediaPickedEvent {
