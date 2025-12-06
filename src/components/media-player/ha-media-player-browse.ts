@@ -57,6 +57,7 @@ import "../ha-list-item";
 import "../ha-spinner";
 import "../ha-svg-icon";
 import "../ha-tooltip";
+import "../search-input";
 import "./ha-browse-media-manual";
 import type { ManualMediaPickedEvent } from "./ha-browse-media-manual";
 import "./ha-browse-media-tts";
@@ -510,6 +511,18 @@ export class HaMediaPlayerBrowse extends LitElement {
             @scroll=${this._scroll}
             @touchmove=${this._scroll}
           >
+            ${
+              currentItem.can_search
+                ? html`
+                    <div class="container search">
+                      <search-input
+                        .hass=${this.hass}
+                        .label=${this.hass.localize("ui.common.search")}
+                      ></search-input>
+                    </div>
+                  `
+                : nothing
+            }
             ${
               this._error
                 ? html`
@@ -999,6 +1012,21 @@ export class HaMediaPlayerBrowse extends LitElement {
 
         .no-items {
           padding-left: 32px;
+        }
+
+        .search {
+          margin-top: 16px;
+        }
+
+        .search search-input {
+          display: block;
+          width: 100%;
+          box-sizing: border-box;
+        }
+
+        .search ha-textfield {
+          width: 100%;
+          box-sizing: border-box;
         }
 
         .highlight-add-button {
