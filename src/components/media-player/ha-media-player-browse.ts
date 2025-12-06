@@ -59,6 +59,7 @@ import "../ha-svg-icon";
 import "../ha-tooltip";
 import "../search-input";
 import "./ha-browse-media-manual";
+import "./ha-media-player-search"; 
 import type { ManualMediaPickedEvent } from "./ha-browse-media-manual";
 import "./ha-browse-media-tts";
 import type { TtsMediaPickedEvent } from "./ha-browse-media-tts";
@@ -374,6 +375,18 @@ export class HaMediaPlayerBrowse extends LitElement {
     }
 
     const currentItem = this._currentItem;
+
+    if (
+      currentItem.media_content_id === "search" ||
+      currentItem.media_content_type?.endsWith("search")
+    ) {
+      return html`
+        <ha-media-player-search
+          .hass=${this.hass}
+          .item=${currentItem}
+        ></ha-media-player-search>
+      `;
+    }
 
     const subtitle = this.hass.localize(
       `ui.components.media-browser.class.${currentItem.media_class}`
