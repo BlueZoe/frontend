@@ -384,6 +384,8 @@ export class HaMediaPlayerBrowse extends LitElement {
         <ha-media-player-search
           .hass=${this.hass}
           .item=${currentItem}
+          .entityId=${this.entityId}
+          .navigateIds=${this.navigateIds}
         ></ha-media-player-search>
       `;
     }
