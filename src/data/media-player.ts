@@ -19,6 +19,7 @@ import {
   mdiRepeat,
   mdiRepeatOff,
   mdiRepeatOnce,
+  mdiSearchWeb,
   mdiShuffle,
   mdiShuffleDisabled,
   mdiSkipNext,
@@ -141,6 +142,7 @@ export const MediaClassBrowserSettings: Record<
     show_list_images: true,
   },
   directory: { icon: mdiFolder, layout: "grid", show_list_images: true },
+  search: { icon: mdiSearchWeb, layout: "grid", show_list_images: true },
   episode: {
     icon: mdiTelevisionClassic,
     layout: "grid",
