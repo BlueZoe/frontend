@@ -59,3 +59,4 @@ test/coverage/
 
 .vscode/tasks.json
 .devcontainer/devcontainer.json
+PR_DESCRIPTION.md

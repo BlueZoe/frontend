@@ -211,7 +211,6 @@ export interface MediaPlayerItem {
   iconPath?: string;
   children?: MediaPlayerItem[];
   not_shown?: number;
-  is_liked?: boolean;
 }
 
 export const browseMediaPlayer = (

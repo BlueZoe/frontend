@@ -59,10 +59,18 @@ import "../ha-svg-icon";
 import "../ha-tooltip";
 import "../search-input";
 import "./ha-browse-media-manual";
-import "./ha-media-player-search"; 
+import "./ha-media-player-search";
 import type { ManualMediaPickedEvent } from "./ha-browse-media-manual";
 import "./ha-browse-media-tts";
 import type { TtsMediaPickedEvent } from "./ha-browse-media-tts";
+import {
+  updateItemLikedStatus,
+  type MediaPlayerItemWithSaved,
+} from "./ha-media-player-like-button";
+import {
+  renderMediaPlayerListItem,
+  haMediaPlayerListItemStyles,
+} from "./ha-media-player-list-item";
 
 declare global {
   interface HASSDomEvents {
@@ -735,55 +743,23 @@ export class HaMediaPlayerBrowse extends LitElement {
 
   private _renderListItem = (child: MediaPlayerItem): TemplateResult => {
     const currentItem = this._currentItem;
-    const mediaClass = MediaClassBrowserSettings[currentItem!.media_class];
+    const isLiked = (child as MediaPlayerItemWithSaved).is_saved ?? false;
 
-    const backgroundImage =
-      mediaClass.show_list_images && child.thumbnail
-        ? this._getThumbnailURLorBase64(child.thumbnail).then(
-            (value) => `url(${value})`
-          )
-        : "none";
-
-    return html`
-      <ha-list-item
-        @click=${this._childClicked}
-        .item=${child}
-        .graphic=${mediaClass.show_list_images ? "medium" : "avatar"}
-      >
-        ${backgroundImage === "none" && !child.can_play
-          ? html`<ha-svg-icon
-              .path=${MediaClassBrowserSettings[
-                child.media_class === "directory"
-                  ? child.children_media_class || child.media_class
-                  : child.media_class
-              ].icon}
-              slot="graphic"
-            ></ha-svg-icon>`
-          : html`<div
-              class=${classMap({
-                graphic: true,
-                thumbnail: mediaClass.show_list_images === true,
-              })}
-              style="background-image: ${until(backgroundImage, "")}"
-              slot="graphic"
-            >
-              ${child.can_play
-                ? html`<ha-icon-button
-                    class="play ${classMap({
-                      show: !mediaClass.show_list_images || !child.thumbnail,
-                    })}"
-                    .item=${child}
-                    .label=${this.hass.localize(
-                      `ui.components.media-browser.${this.action}-media`
-                    )}
-                    .path=${this.action === "play" ? mdiPlay : mdiPlus}
-                    @click=${this._actionClicked}
-                  ></ha-icon-button>`
-                : nothing}
-            </div>`}
-        <span class="title">${child.title}</span>
-      </ha-list-item>
-    `;
+    return renderMediaPlayerListItem(
+      child,
+      this.hass,
+      this.entityId || "",
+      (_hass: HomeAssistant, thumbnailUrl: string | undefined) =>
+        this._getThumbnailURLorBase64(thumbnailUrl),
+      {
+        mediaClass: currentItem!.media_class,
+        action: this.action,
+        isLiked,
+        onItemClick: this._childClicked,
+        onActionClick: this._actionClicked,
+        onLikedChanged: this._handleLikedChanged,
+      }
+    );
   };
 
   private async _getThumbnailURLorBase64(
@@ -832,7 +808,6 @@ export class HaMediaPlayerBrowse extends LitElement {
   private _actionClicked = (ev: MouseEvent): void => {
     ev.stopPropagation();
     const item = (ev.currentTarget as any).item;
-
     this._runAction(item);
   };
 
@@ -874,6 +849,28 @@ export class HaMediaPlayerBrowse extends LitElement {
     fireEvent(this, "media-browsed", {
       ids: [...this.navigateIds, item],
     });
+  };
+
+  /**
+   * Handles liked status changes from the like button component.
+   * Updates current item's children to reflect the new liked status.
+   */
+  private _handleLikedChanged = (
+    ev: CustomEvent<{ item: MediaPlayerItem; isLiked: boolean }>
+  ): void => {
+    const { item, isLiked } = ev.detail;
+    if (!item.media_content_id) return;
+
+    // Update the item's is_saved status if it's in the current view
+    this._currentItem = updateItemLikedStatus(
+      this._currentItem,
+      item.media_content_id,
+      isLiked
+    );
+
+    if (this._currentItem) {
+      this.requestUpdate();
+    }
   };
 
   private async _fetchData(
@@ -1009,6 +1006,7 @@ export class HaMediaPlayerBrowse extends LitElement {
   static get styles(): CSSResultGroup {
     return [
       haStyle,
+      haMediaPlayerListItemStyles,
       css`
         :host {
           display: flex;
@@ -1180,10 +1178,6 @@ export class HaMediaPlayerBrowse extends LitElement {
           border-bottom-color: var(--divider-color);
         }
 
-        ha-list-item {
-          width: 100%;
-        }
-
         div.children {
           display: grid;
           grid-template-columns: repeat(
@@ -1320,41 +1314,6 @@ export class HaMediaPlayerBrowse extends LitElement {
         .child ha-card .title {
           margin-bottom: 16px;
           padding-left: 16px;
-        }
-
-        ha-list-item .graphic {
-          background-size: contain;
-          background-repeat: no-repeat;
-          background-position: center;
-          border-radius: var(--ha-border-radius-sm);
-          display: flex;
-          align-content: center;
-          align-items: center;
-          line-height: initial;
-        }
-
-        ha-list-item .graphic .play {
-          opacity: 0;
-          transition: all 0.5s;
-          background-color: rgba(var(--rgb-card-background-color), 0.5);
-          border-radius: var(--ha-border-radius-circle);
-          --mdc-icon-button-size: 40px;
-        }
-
-        ha-list-item:hover .graphic .play {
-          opacity: 1;
-          color: var(--primary-text-color);
-        }
-
-        ha-list-item .graphic .play.show {
-          opacity: 1;
-          background-color: transparent;
-        }
-
-        ha-list-item .title {
-          margin-left: 16px;
-          margin-inline-start: 16px;
-          margin-inline-end: initial;
         }
 
         /* ============= Narrow ============= */
