@@ -27,8 +27,8 @@ export const haMediaPlayerListItemStyles: CSSResultGroup = css`
     display: flex;
     align-items: center;
     position: absolute;
-    left: 80px;
-    right: var(--mdc-list-side-padding, 20px);
+    left: 86px;
+    right: 20px;
     top: 0;
     bottom: 0;
   }

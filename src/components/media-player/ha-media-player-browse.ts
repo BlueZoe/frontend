@@ -1170,6 +1170,15 @@ export class HaMediaPlayerBrowse extends LitElement {
           margin-top: 10px;
         }
 
+        /* Adjust title-container left position based on graphic type */
+        ha-list-item[graphic="avatar"] .title-container {
+          left: 78px; /* Smaller left offset for icon (avatar) */
+        }
+
+        ha-list-item[graphic="medium"] .title-container {
+          left: 96px; /* Standard offset for image (medium) */
+        }
+
         ha-list li:last-child {
           display: none;
         }
