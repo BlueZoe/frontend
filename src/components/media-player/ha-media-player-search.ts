@@ -1,6 +1,6 @@
 import { grid } from "@lit-labs/virtualizer/layouts/grid";
 import { mdiMagnify, mdiPlay } from "@mdi/js";
-import type { CSSResultGroup, TemplateResult } from "lit";
+import type { CSSResultGroup, PropertyValues, TemplateResult } from "lit";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
@@ -22,13 +22,17 @@ import "../ha-list";
 import "../ha-list-item";
 import "../ha-svg-icon";
 import "../ha-textfield";
-
-const ACCENT_COLORS = [
-  "#f19d9bff", "#eb89a9ff", "#cb9dd4ff", "#8a75afff", "#7c86c0ff",
-  "#9fd0f9ff", "#b4dff3ff", "#7eadb4ff", "#7aaea9ff", "#94ca97ff",
-  "#c0daa2ff", "#d6dbaaff", "#dfd790ff", "#ded2aeff", "#d9c6aaff",
-  "#eca590ff", "#8D6E63", "#BDBDBD", "#78909C"
-];
+import "../ha-tooltip";
+import { loadVirtualizer } from "../../resources/virtualizer";
+import {
+  enrichItemsWithLikedStatus,
+  updateItemLikedStatus,
+  type MediaPlayerItemWithSaved,
+} from "./ha-media-player-like-button";
+import {
+  renderMediaPlayerListItem,
+  haMediaPlayerListItemStyles,
+} from "./ha-media-player-list-item";
 
 @customElement("ha-media-player-search")
 export class HaMediaPlayerSearch extends LitElement {
@@ -47,6 +51,16 @@ export class HaMediaPlayerSearch extends LitElement {
   @state() private _searchResults?: MediaPlayerItem;
 
   @state() private _loading = false;
+
+  @state() private _likedSongsTrackIds = new Set<string>();
+
+  public willUpdate(changedProps: PropertyValues<this>): void {
+    super.willUpdate(changedProps);
+
+    if (!this.hasUpdated) {
+      loadVirtualizer();
+    }
+  }
 
   protected render(): TemplateResult {
     return html`
@@ -70,7 +84,8 @@ export class HaMediaPlayerSearch extends LitElement {
                 class="tab ${classMap({
                   active: this._searchFilter === filter,
                 })}"
-                @click=${() => this._handleFilterClick(filter)}
+                .filter=${filter}
+                @click=${this._handleFilterClick}
               >
                 ${filter.charAt(0).toUpperCase() + filter.slice(1)}s
               </div>
@@ -81,15 +96,6 @@ export class HaMediaPlayerSearch extends LitElement {
         ${this._renderContent()}
       </div>
     `;
-  }
-
-  private _generateColor(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      hash = text.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const index = Math.abs(hash % ACCENT_COLORS.length);
-    return ACCENT_COLORS[index];
   }
 
   private _renderContent() {
@@ -138,11 +144,17 @@ export class HaMediaPlayerSearch extends LitElement {
       `;
     }
 
+    // Include liked songs state in items, preferring is_saved from backend
+    const itemsWithLikedSongs = enrichItemsWithLikedStatus(
+      children,
+      this._likedSongsTrackIds
+    );
+
     return html`
       <ha-list>
         <lit-virtualizer
           scroller
-          .items=${children}
+          .items=${itemsWithLikedSongs}
           style=${styleMap({
             height: `${children.length * 72 + 26}px`,
           })}
@@ -160,7 +172,7 @@ export class HaMediaPlayerSearch extends LitElement {
       : "none";
 
     return html`
-      <div class="child" .item=${child} @click=${this._childClicked}>
+      <div class="child" .item=${child} @click=${this._handleGridItemClick}>
         <ha-card outlined>
           <div class="thumbnail">
             ${child.thumbnail
@@ -199,62 +211,27 @@ export class HaMediaPlayerSearch extends LitElement {
     `;
   };
 
-  // TODO: add & remove favorite
-  private _renderListItem = (child: MediaPlayerItem): TemplateResult => {
-    const showListImages = false;
-    
-    const avatarColor = this._generateColor(child.title);
-    const firstLetter = child.title.charAt(0).toUpperCase();
+  private _renderListItem = (
+    child: MediaPlayerItem & { _isLiked?: boolean }
+  ): TemplateResult => {
+    // Use pre-computed _isLiked from enrichItemsWithLikedStatus
+    const isLiked = child._isLiked ?? false;
 
-    const backgroundImage =
-      showListImages && child.thumbnail
-        ? this._getThumbnailURLorBase64(child.thumbnail).then(
-            (value) => `url(${value})`
-          )
-        : "none";
-
-    return html`
-      <ha-list-item
-        @click=${this._childClicked}
-        .item=${child}
-        graphic="medium"
-      >
-        ${
-          backgroundImage === "none" && !child.can_play
-            ? html`<ha-svg-icon icon="mdi:folder" slot="graphic"></ha-svg-icon>`
-            : html`
-                <div
-                  class=${classMap({
-                    graphic: true,
-                    thumbnail: showListImages,
-                    "letter-avatar": true,
-                  })}
-                  style=${styleMap({
-                    backgroundImage: until(backgroundImage, "none"),
-                    backgroundColor: backgroundImage === "none" ? avatarColor : "transparent",
-                  })}
-                  slot="graphic"
-                >
-                  ${backgroundImage === "none" && !child.can_play ? nothing : 
-                    html`<span class="avatar-letter">${firstLetter}</span>`
-                  }
-
-                  ${child.can_play
-                    ? html`<ha-icon-button
-                        class="play ${classMap({
-                          show: !showListImages || !child.thumbnail,
-                        })}"
-                        .item=${child}
-                        .path=${mdiPlay}
-                        @click=${this._actionClicked}
-                      ></ha-icon-button>`
-                    : nothing}
-                </div>
-              `
-        }
-        <span class="title">${child.title}</span>
-      </ha-list-item>
-    `;
+    return renderMediaPlayerListItem(
+      child,
+      this.hass,
+      this.entityId,
+      (_hass: HomeAssistant, thumbnailUrl: string | undefined) =>
+        this._getThumbnailURLorBase64(thumbnailUrl),
+      {
+        mediaClass: "track",
+        action: "play",
+        isLiked,
+        onItemClick: this._childClicked,
+        onActionClick: this._actionClicked,
+        onLikedChanged: this._handleLikedChanged,
+      }
+    );
   };
 
   private async _getThumbnailURLorBase64(
@@ -303,10 +280,7 @@ export class HaMediaPlayerSearch extends LitElement {
     fireEvent(this, "media-picked", { item, navigateIds: [] });
   }
 
-  private _childClicked = async (ev: MouseEvent): Promise<void> => {
-    const target = ev.currentTarget as any;
-    const item: MediaPlayerItem = target.item;
-
+  private _handleItemClick = async (item: MediaPlayerItem): Promise<void> => {
     if (!item) return;
 
     if (!item.can_expand) {
@@ -321,6 +295,47 @@ export class HaMediaPlayerSearch extends LitElement {
     });
   };
 
+  private _handleGridItemClick = async (ev: MouseEvent): Promise<void> => {
+    const target = ev.currentTarget as any;
+    const item: MediaPlayerItem = target.item;
+    await this._handleItemClick(item);
+  };
+
+  private _childClicked = async (ev: MouseEvent): Promise<void> => {
+    const target = ev.currentTarget as any;
+    const item: MediaPlayerItem = target.item;
+    await this._handleItemClick(item);
+  };
+
+  /**
+   * Handles liked status changes from the like button component.
+   * Updates internal state to keep search results in sync.
+   */
+  private _handleLikedChanged = (
+    ev: CustomEvent<{ item: MediaPlayerItem; isLiked: boolean }>
+  ): void => {
+    const { item, isLiked } = ev.detail;
+    if (!item.media_content_id) return;
+
+    // Update liked songs set
+    const updated = new Set(this._likedSongsTrackIds);
+    if (isLiked) {
+      updated.add(item.media_content_id);
+    } else {
+      updated.delete(item.media_content_id);
+    }
+    this._likedSongsTrackIds = updated;
+
+    // Update search results data to reflect new liked status
+    this._searchResults = updateItemLikedStatus(
+      this._searchResults,
+      item.media_content_id,
+      isLiked
+    );
+
+    this.requestUpdate();
+  };
+
   private _handleSearchInput(ev: any) {
     this._searchQuery = ev.target.value;
   }
@@ -331,7 +346,9 @@ export class HaMediaPlayerSearch extends LitElement {
     }
   }
 
-  private _handleFilterClick(filter: string) {
+  private _handleFilterClick(ev: Event) {
+    const target = ev.currentTarget as HTMLElement;
+    const filter = (target as any).filter as string;
     if (this._searchFilter === filter) return;
     this._searchFilter = filter;
     if (this._searchQuery.trim()) {
@@ -360,8 +377,21 @@ export class HaMediaPlayerSearch extends LitElement {
         "search"
       );
       this._searchResults = result;
-    } catch (err) {
-      console.error("Search failed:", err);
+      // Update liked songs set based on is_saved field from backend
+      if (result?.children) {
+        for (const child of result.children) {
+          if (child.media_content_id) {
+            const childWithSaved = child as MediaPlayerItemWithSaved;
+            if (childWithSaved.is_saved === true) {
+              this._likedSongsTrackIds.add(child.media_content_id);
+            } else if (childWithSaved.is_saved === false) {
+              this._likedSongsTrackIds.delete(child.media_content_id);
+            }
+          }
+        }
+      }
+    } catch (_err) {
+      // Search failed - silently handle error and clear results
       this._searchResults = undefined;
     } finally {
       this._loading = false;
@@ -369,215 +399,171 @@ export class HaMediaPlayerSearch extends LitElement {
   }
 
   static get styles(): CSSResultGroup {
-    return css`
-      :host {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        overflow: hidden;
-      }
-      .header {
-        display: flex;
-        justify-content: space-between;
-        border-bottom: 1px solid var(--divider-color);
-        background-color: var(--card-background-color);
-        padding: 16px;
-      }
-      .header-content {
-        display: flex;
-        flex-wrap: wrap;
-        flex-grow: 1;
-        align-items: flex-start;
-      }
-      .header-info {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        align-self: stretch;
-        min-width: 0;
-        flex: 1;
-      }
-      .breadcrumb .title {
-        font-size: var(--ha-font-size-4xl);
-        line-height: var(--ha-line-height-condensed);
-        font-weight: var(--ha-font-weight-bold);
-        margin: 0;
-      }
-      .content {
-        flex: 1;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-      }
-      .padding {
-        padding: 16px;
-      }
-      .search-bar {
-        margin-bottom: 16px;
-      }
-      ha-textfield {
-        width: 100%;
-      }
-      .filter-tabs {
-        display: flex;
-        border-bottom: 1px solid var(--divider-color);
-        margin-bottom: 16px;
-      }
-      .tab {
-        padding: 8px 16px;
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-        font-weight: 500;
-        color: var(--secondary-text-color);
-        text-transform: uppercase;
-      }
-      .tab.active {
-        border-bottom-color: var(--primary-color);
-        color: var(--primary-color);
-      }
-      .tab:hover {
-        background-color: rgba(var(--rgb-primary-color), 0.05);
-      }
-      .search-results-placeholder {
-        text-align: center;
-        color: var(--secondary-text-color);
-        margin-top: 32px;
-      }
-      .loading {
-        text-align: center;
-        padding: 20px;
-        color: var(--secondary-text-color);
-      }
+    return [
+      haMediaPlayerListItemStyles,
+      css`
+        :host {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          overflow: hidden;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          border-bottom: 1px solid var(--divider-color);
+          background-color: var(--card-background-color);
+          padding: 16px;
+        }
+        .header-content {
+          display: flex;
+          flex-wrap: wrap;
+          flex-grow: 1;
+          align-items: flex-start;
+        }
+        .header-info {
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          align-self: stretch;
+          min-width: 0;
+          flex: 1;
+        }
+        .breadcrumb .title {
+          font-size: var(--ha-font-size-4xl);
+          line-height: var(--ha-line-height-condensed);
+          font-weight: var(--ha-font-weight-bold);
+          margin: 0;
+        }
+        .content {
+          flex: 1;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+        }
+        .padding {
+          padding: 16px;
+        }
+        .search-bar {
+          margin-bottom: 16px;
+        }
+        ha-textfield {
+          width: 100%;
+        }
+        .filter-tabs {
+          display: flex;
+          border-bottom: 1px solid var(--divider-color);
+          margin-bottom: 16px;
+        }
+        .tab {
+          padding: 8px 16px;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+          font-weight: 500;
+          color: var(--secondary-text-color);
+          text-transform: uppercase;
+        }
+        .tab.active {
+          border-bottom-color: var(--primary-color);
+          color: var(--primary-color);
+        }
+        .tab:hover {
+          background-color: rgba(var(--rgb-primary-color), 0.05);
+        }
+        .search-results-placeholder {
+          text-align: center;
+          color: var(--secondary-text-color);
+          margin-top: 32px;
+        }
+        .loading {
+          text-align: center;
+          padding: 20px;
+          color: var(--secondary-text-color);
+        }
 
-      /* Grid Layout Styles */
-      .child {
-        display: flex;
-        flex-direction: column;
-        cursor: pointer;
-      }
-      ha-card {
-        position: relative;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      ha-card .thumbnail {
-        width: 100%;
-        position: relative;
-        box-sizing: border-box;
-        padding-bottom: 100%;
-      }
-      .image {
-        position: absolute;
-        top: 0;
-        right: 0;
-        left: 0;
-        bottom: 0;
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-position: center;
-        border-radius: var(--ha-border-radius-sm) var(--ha-border-radius-sm) 0 0;
-      }
-      .icon-holder {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        background-color: var(--secondary-background-color);
-      }
-      .folder {
-        color: var(--secondary-text-color);
-        --mdc-icon-size: 50px;
-      }
-      .child .play {
-        position: absolute;
-        transition: color 0.5s;
-        border-radius: 50%;
-        top: calc(50% - 25px);
-        right: calc(50% - 25px);
-        opacity: 0;
-        transition: opacity 0.1s ease-out;
-        --mdc-icon-button-size: 50px;
-        --mdc-icon-size: 30px;
-        background-color: var(--primary-color);
-        color: var(--text-primary-color);
-      }
-      ha-card:hover .image {
-        filter: brightness(70%);
-        transition: filter 0.5s;
-      }
-      ha-card:hover .play {
-        opacity: 1;
-      }
-      .title {
-        font-size: var(--ha-font-size-m);
-        padding: 12px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
+        /* Grid Layout Styles */
+        .child {
+          display: flex;
+          flex-direction: column;
+          cursor: pointer;
+        }
+        ha-card {
+          position: relative;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        ha-card .thumbnail {
+          width: 100%;
+          position: relative;
+          box-sizing: border-box;
+          padding-bottom: 100%;
+        }
+        .image {
+          position: absolute;
+          top: 0;
+          right: 0;
+          left: 0;
+          bottom: 0;
+          background-size: cover;
+          background-repeat: no-repeat;
+          background-position: center;
+          border-radius: var(--ha-border-radius-sm) var(--ha-border-radius-sm) 0
+            0;
+        }
+        .icon-holder {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background-color: var(--secondary-background-color);
+        }
+        .folder {
+          color: var(--secondary-text-color);
+          --mdc-icon-size: 50px;
+        }
+        .child .play {
+          position: absolute;
+          transition: color 0.5s;
+          border-radius: 50%;
+          top: calc(50% - 25px);
+          right: calc(50% - 25px);
+          opacity: 0;
+          transition: opacity 0.1s ease-out;
+          --mdc-icon-button-size: 50px;
+          --mdc-icon-size: 30px;
+          background-color: var(--primary-color);
+          color: var(--text-primary-color);
+        }
+        ha-card:hover .image {
+          filter: brightness(70%);
+          transition: filter 0.5s;
+        }
+        ha-card:hover .play {
+          opacity: 1;
+        }
+        .title {
+          font-size: var(--ha-font-size-m);
+          padding: 12px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
 
-      /* List Layout Styles */
-      ha-list {
-        --mdc-list-vertical-padding: 0;
-      }
-      ha-list-item {
-        cursor: pointer;
-        width: 100%;
-      }
-      ha-list-item .graphic {
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-position: center;
-        border-radius: 4px;
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        overflow: hidden;
-      }
-      .avatar-letter {
-        font-size: 20px;
-        font-weight: 500;
-        color: rgba(255, 255, 255, 0.8);
-        pointer-events: none;
-      }
-      
-      ha-list-item .play {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        opacity: 0;
-        background-color: rgba(0, 0, 0, 0.5);
-        border-radius: 4px;
-        color: white;
-        transition: opacity 0.2s;
-        
-        --mdc-icon-button-size: 40px;
-        --mdc-icon-size: 24px;
-      }
-      
-      ha-list-item .play.show {
-        opacity: 0;
-      }
-      
-      ha-list-item:hover .play.show,
-      ha-list-item:hover .play {
-        opacity: 1;
-        color: white; 
-      }
-      
-      ha-list-item .title {
-        margin-left: 16px;
-      }
-
-      lit-virtualizer {
-        contain: size layout;
-        flex: 1;
-      }
-    `;
+        /* List Layout Styles */
+        ha-list {
+          --mdc-list-vertical-padding: 0;
+        }
+        ha-list-item {
+          cursor: pointer;
+        }
+        ha-list-item .mdc-deprecated-list-item__primary-text {
+          position: relative;
+        }
+        lit-virtualizer {
+          contain: size layout;
+          flex: 1;
+        }
+      `,
+    ];
   }
 }
 

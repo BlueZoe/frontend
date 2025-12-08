@@ -57,3 +57,6 @@ test/coverage/
 # AI tooling
 .claude
 
+.vscode/tasks.json
+.devcontainer/devcontainer.json
+PR_DESCRIPTION.md
