@@ -29,3 +29,15 @@ Home Assistant is open-source and Apache 2 licensed. Feel free to browse the rep
 We use [BrowserStack](https://www.browserstack.com) to test Home Assistant on a large variety of devices.
 
 [![Home Assistant - A project from the Open Home Foundation](https://www.openhomefoundation.org/badges/home-assistant.png)](https://www.openhomefoundation.org/)
+
+## Updated features
+
+### 1. Integrated Favorites Toggle
+Added a liked songs toggle with optimistic UI updates and robust error handling.
+
+### 2. Consistent Status Display and Unified Experience
+The liked status icon is now integrated across all track lists, giving users immediate visual feedback. Both browse and search components now share the same rendering logic to deliver a seamless and consistent user experience (UI).
+
+### 3. Multi-Type Content Search
+Users can successfully search for and retrieve results across all major Spotify content types by selecting the corresponding tab: Songs (TRACKS), Artists, Albums, Playlists.
+
