@@ -78,7 +78,7 @@ export class HaMediaPlayerSearch extends LitElement {
         </div>
 
         <div class="filter-tabs">
-          ${["track", "album", "playlist"].map(
+          ${["track", "artist", "album", "playlist"].map(
             (filter) => html`
               <div
                 class="tab ${classMap({
